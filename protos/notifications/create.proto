@@ -1,0 +1,26 @@
+syntax="proto3";
+
+option go_package = "go-noti-server/notifications";
+
+package notifications;
+
+service NotificationService {
+ rpc Send(NotificationRequest) returns (NotificationResponse) {}
+}
+
+message NotificatonPackage {
+  string message = 1;
+  repeated string deviceTokens = 2;
+  string analyticsLabel = 3;
+  string title = 4;
+  string body = 5;
+}
+
+message NotificationRequest {
+  NotificatonPackage notification = 1;
+}
+
+message NotificationResponse{
+  string message = 1;
+}
+

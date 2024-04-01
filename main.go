@@ -52,7 +52,8 @@ func (s *server) Send(ctx context.Context, req *pb.NotificationRequest) (*pb.Not
 
 	endTime := time.Now()
 	duration := endTime.Sub(startTime)
-	log.Printf("Time taken: %v\n", duration)
+
+	log.Printf("Request Time taken: %v\n", duration)
 
 	return &pb.NotificationResponse{Message: "Success"}, nil
 }
@@ -63,46 +64,49 @@ func worker(workerChan <-chan Notification) {
 	app, err := firebase.NewApp(ctx, nil, opt)
 
 	if err != nil {
+		log.Fatalf("ERROR: %+v", err)
 		return
 	}
 
 	fcmClient, err := app.Messaging(ctx)
+
 	if err != nil {
+		log.Fatalf("ERROR: %+v", err)
 		return
 	}
 
 	fcmStart := time.Now()
 
 	for notification := range workerChan {
-		// for _, deviceToken := range notification.deviceTokens {
-		message := &messaging.MulticastMessage{
-			Notification: &messaging.Notification{
-				Title: notification.title,
-				Body:  notification.body,
-			},
-			Data: map[string]string{
-				"analytics_label": notification.analyticsLabel,
-			},
-			// FCMOptions: &messaging.FCMOptions{
-			// 	AnalyticsLabel: notification.analyticsLabel,
-			// },
-			Tokens: notification.deviceTokens, // Assuming a single device token for simplicity. Still janky. Should be a loop.
+		var messages []*messaging.Message
+
+		for _, deviceToken := range notification.deviceTokens {
+			msg := &messaging.Message{
+				Notification: &messaging.Notification{
+					Title: notification.title,
+					Body:  notification.body,
+				},
+				FCMOptions: &messaging.FCMOptions{
+					AnalyticsLabel: notification.analyticsLabel,
+				},
+				Token: deviceToken, // Assuming a single device token for simplicity. Still janky. Should be a loop.
+			}
+			messages = append(messages, msg)
 		}
-		// _, err := fcmClient
-		msgResponse, err := fcmClient.SendEachForMulticast(ctx, message)
+		// Send() is very slow.. DO NOT USE..
+		msgResponse, err := fcmClient.SendEach(ctx, messages)
 		if err != nil {
 			log.Printf("ERROR: %+v", err)
-			// log.Printf("Error sending FCM message to device token %s: %v\n", deviceToken, err)
+			log.Printf("Error sending FCM message to device token: %v\n", err)
 			continue
 		}
+
 		fcmEnd := time.Now()
 
 		fcmDiff := fcmEnd.Sub(fcmStart)
 		log.Printf("FCM Time: %v\n", fcmDiff)
-		log.Printf("Success count: %v\n", msgResponse.SuccessCount)
-		log.Printf("Failure count: %v\n", msgResponse.FailureCount)
-		log.Printf("FCM message sent successfully to device tokens\n")
-		// }
+		log.Printf("SuccessCount: %v\n", msgResponse.SuccessCount)
+		log.Printf("FailureCount: %v\n", msgResponse.FailureCount)
 	}
 }
 

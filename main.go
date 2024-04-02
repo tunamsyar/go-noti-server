@@ -7,6 +7,7 @@ import (
 	pb "go-noti-server/protos/notifications"
 	"log"
 	"net"
+	"os"
 	"time"
 
 	firebase "firebase.google.com/go/v4"
@@ -34,6 +35,7 @@ type Notification struct {
 func (s *server) Send(ctx context.Context, req *pb.NotificationRequest) (*pb.NotificationResponse, error) {
 	startTime := time.Now()
 	fmt.Printf("%+v\n", req)
+
 	notificationData := Notification{
 		message:        req.GetNotification().Message,
 		title:          req.GetNotification().Title,
@@ -60,7 +62,7 @@ func (s *server) Send(ctx context.Context, req *pb.NotificationRequest) (*pb.Not
 
 	log.Printf("Request Time taken: %v\n", duration)
 
-	return &pb.NotificationResponse{Message: "Success"}, nil
+	return &pb.NotificationResponse{Message: "Message Received"}, nil
 }
 
 func (s *healthCheckServer) Check(ctx context.Context, req *pbh.HealthCheckRequest) (*pbh.HealthCheckResponse, error) {
@@ -69,19 +71,19 @@ func (s *healthCheckServer) Check(ctx context.Context, req *pbh.HealthCheckReque
 }
 
 func worker(workerChan <-chan Notification) {
+	auth := os.Getenv("AUTH_FILE")
 	ctx := context.Background()
-	opt := option.WithCredentialsFile("auth.json")
-	app, err := firebase.NewApp(ctx, nil, opt)
+	opt := option.WithCredentialsFile(auth)
 
+	app, err := firebase.NewApp(ctx, nil, opt)
 	if err != nil {
-		log.Fatalf("ERROR: %+v", err)
+		log.Printf("ERROR: %+v", err)
 		return
 	}
 
 	fcmClient, err := app.Messaging(ctx)
-
 	if err != nil {
-		log.Fatalf("ERROR: %+v", err)
+		log.Printf("ERROR: %+v", err)
 		return
 	}
 
@@ -131,8 +133,9 @@ func main() {
 	pbh.RegisterHealthServiceServer(s, &healthCheckServer{})
 
 	log.Printf("server listening at %v\n", lis.Addr())
+	log.Printf("Hello")
+
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
-	fmt.Println("hello")
 }

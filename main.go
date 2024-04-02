@@ -14,6 +14,9 @@ import (
 	"firebase.google.com/go/v4/messaging"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 type server struct {
@@ -32,10 +35,45 @@ type Notification struct {
 	deviceTokens   []string
 }
 
+func AuthInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	// extract token from context
+	token := extractFromContext(ctx)
+	// validate token
+	fmt.Println("auth intercept")
+	if !isTokenValid(token) {
+		return nil, status.Errorf(codes.Unauthenticated, "Token invalid")
+	}
+	// handle it
+	return handler(ctx, req)
+}
+
+func extractFromContext(ctx context.Context) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+
+	tokens := md.Get("Authorization")
+	if len(tokens) == 0 {
+		return ""
+	}
+	return tokens[0]
+}
+
+func isTokenValid(token string) bool {
+	authed := os.Getenv("AUTHED")
+	return token == authed
+}
+
 func (s *server) Send(ctx context.Context, req *pb.NotificationRequest) (*pb.NotificationResponse, error) {
 	startTime := time.Now()
-	fmt.Printf("%+v\n", req)
 
+	if req.GetNotification() == nil {
+		fmt.Println("Caught it")
+		return nil, status.Errorf(codes.InvalidArgument, "Empty Message")
+	}
+
+	fmt.Printf("%+v\n", req)
 	notificationData := Notification{
 		message:        req.GetNotification().Message,
 		title:          req.GetNotification().Title,
@@ -128,7 +166,8 @@ func main() {
 		log.Fatalf("Failed to listen: %v", err)
 	}
 
-	s := grpc.NewServer()
+	s := grpc.NewServer(grpc.UnaryInterceptor(AuthInterceptor))
+
 	pb.RegisterNotificationServiceServer(s, &server{})
 	pbh.RegisterHealthServiceServer(s, &healthCheckServer{})
 

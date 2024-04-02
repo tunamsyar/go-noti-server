@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	pbh "go-noti-server/protos/health"
 	pb "go-noti-server/protos/notifications"
 	"log"
 	"net"
@@ -16,6 +17,10 @@ import (
 
 type server struct {
 	pb.UnimplementedNotificationServiceServer
+}
+
+type healthCheckServer struct {
+	pbh.UnimplementedHealthServiceServer
 }
 
 type Notification struct {
@@ -56,6 +61,11 @@ func (s *server) Send(ctx context.Context, req *pb.NotificationRequest) (*pb.Not
 	log.Printf("Request Time taken: %v\n", duration)
 
 	return &pb.NotificationResponse{Message: "Success"}, nil
+}
+
+func (s *healthCheckServer) Check(ctx context.Context, req *pbh.HealthCheckRequest) (*pbh.HealthCheckResponse, error) {
+	log.Printf("Sudah sampai")
+	return &pbh.HealthCheckResponse{Message: "Alive"}, nil
 }
 
 func worker(workerChan <-chan Notification) {
@@ -118,6 +128,7 @@ func main() {
 
 	s := grpc.NewServer()
 	pb.RegisterNotificationServiceServer(s, &server{})
+	pbh.RegisterHealthServiceServer(s, &healthCheckServer{})
 
 	log.Printf("server listening at %v\n", lis.Addr())
 	if err := s.Serve(lis); err != nil {

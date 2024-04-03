@@ -5,10 +5,10 @@ option go_package = "go-noti-server/notifications";
 package notifications;
 
 service NotificationService {
- rpc Send(NotificationRequest) returns (NotificationResponse) {}
+ rpc SendMessage(NotificationRequest) returns (NotificationResponse) {}
 }
 
-message NotificatonPackage {
+message NotificationPackage {
   string message = 1;
   repeated string deviceTokens = 2;
   string analyticsLabel = 3;
@@ -17,7 +17,7 @@ message NotificatonPackage {
 }
 
 message NotificationRequest {
-  NotificatonPackage notification = 1;
+  NotificationPackage notification = 1;
 }
 
 message NotificationResponse{

@@ -65,7 +65,7 @@ func isTokenValid(token string) bool {
 	return token == authed
 }
 
-func (s *server) Send(ctx context.Context, req *pb.NotificationRequest) (*pb.NotificationResponse, error) {
+func (s *server) SendMessage(ctx context.Context, req *pb.NotificationRequest) (*pb.NotificationResponse, error) {
 	startTime := time.Now()
 
 	if req.GetNotification() == nil {

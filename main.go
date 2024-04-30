@@ -161,7 +161,8 @@ func worker(workerChan <-chan Notification) {
 }
 
 func main() {
-	lis, err := net.Listen("tcp", ":50001")
+  port := os.Getenv("PORT")
+	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("Failed to listen: %v", err)
 	}

@@ -7,6 +7,7 @@ import (
 	pb "go-noti-server/protos/notifications"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"time"
 
@@ -160,14 +161,12 @@ func worker(workerChan <-chan Notification) {
 	}
 }
 
-func main() {
-  port := os.Getenv("PORT")
-	lis, err := net.Listen("tcp", port)
-	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
-	}
-
-	s := grpc.NewServer(grpc.UnaryInterceptor(AuthInterceptor))
+func runGrpcServer() {
+	var (
+		port     = os.Getenv("PORT")
+		lis, err = net.Listen("tcp", port)
+		s        = grpc.NewServer(grpc.UnaryInterceptor(AuthInterceptor))
+	)
 
 	pb.RegisterNotificationServiceServer(s, &server{})
 	pbh.RegisterHealthServiceServer(s, &healthCheckServer{})
@@ -175,7 +174,28 @@ func main() {
 	log.Printf("server listening at %v\n", lis.Addr())
 	log.Printf("Hello")
 
+	if err != nil {
+		log.Fatalf("Failed to listen: %v", err)
+	}
+
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
+}
+
+func runHttpServer() {
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintf(w, "Server is healthy\n")
+
+		log.Printf("Server is Running")
+	})
+
+	http.ListenAndServe(":8080", nil)
+}
+
+func main() {
+	go runGrpcServer()
+	runHttpServer()
 }

@@ -34,6 +34,7 @@ type Notification struct {
 	title          string
 	body           string
 	deviceTokens   []string
+	image          string
 }
 
 func AuthInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
@@ -75,10 +76,12 @@ func (s *server) SendMessage(ctx context.Context, req *pb.NotificationRequest) (
 	}
 
 	fmt.Printf("%+v\n", req)
-	notificationData := Notification{
+
+  notificationData := Notification{
 		message:        req.GetNotification().Message,
 		title:          req.GetNotification().Title,
 		body:           req.GetNotification().Body,
+		image:          req.GetNotification().Image,
 		deviceTokens:   req.GetNotification().DeviceTokens,
 		analyticsLabel: req.GetNotification().AnalyticsLabel,
 	}
@@ -134,8 +137,9 @@ func worker(workerChan <-chan Notification) {
 		for _, deviceToken := range notification.deviceTokens {
 			msg := &messaging.Message{
 				Notification: &messaging.Notification{
-					Title: notification.title,
-					Body:  notification.body,
+					Title:    notification.title,
+					Body:     notification.body,
+					ImageURL: notification.image,
 				},
 				FCMOptions: &messaging.FCMOptions{
 					AnalyticsLabel: notification.analyticsLabel,

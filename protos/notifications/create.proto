@@ -14,6 +14,7 @@ message NotificationPackage {
   string analyticsLabel = 3;
   string title = 4;
   string body = 5;
+  string image = 6;
 }
 
 message NotificationRequest {

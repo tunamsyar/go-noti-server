@@ -35,6 +35,7 @@ type Notification struct {
 	body           string
 	deviceTokens   []string
 	image          string
+	data           map[string]string
 }
 
 func AuthInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
@@ -77,13 +78,14 @@ func (s *server) SendMessage(ctx context.Context, req *pb.NotificationRequest) (
 
 	fmt.Printf("%+v\n", req)
 
-  notificationData := Notification{
+	notificationData := Notification{
 		message:        req.GetNotification().Message,
 		title:          req.GetNotification().Title,
 		body:           req.GetNotification().Body,
 		image:          req.GetNotification().Image,
 		deviceTokens:   req.GetNotification().DeviceTokens,
 		analyticsLabel: req.GetNotification().AnalyticsLabel,
+		data:           req.GetNotification().Data,
 	}
 
 	numWorkers := 10
@@ -145,10 +147,12 @@ func worker(workerChan <-chan Notification) {
 					AnalyticsLabel: notification.analyticsLabel,
 				},
 				Token: deviceToken, // Assuming a single device token for simplicity. Still janky. Should be a loop.
+				Data:  notification.data,
 			}
 			messages = append(messages, msg)
 		}
 		// Send() is very slow.. DO NOT USE..
+		apiCall := time.Now()
 		msgResponse, err := fcmClient.SendEach(ctx, messages)
 		if err != nil {
 			log.Printf("ERROR: %+v", err)
@@ -157,9 +161,12 @@ func worker(workerChan <-chan Notification) {
 		}
 
 		fcmEnd := time.Now()
+		apiTrip := fcmEnd.Sub(apiCall)
 
 		fcmDiff := fcmEnd.Sub(fcmStart)
+
 		log.Printf("FCM Time: %v\n", fcmDiff)
+		log.Printf("API Round Trip Time: %v\n", apiTrip)
 		log.Printf("SuccessCount: %v\n", msgResponse.SuccessCount)
 		log.Printf("FailureCount: %v\n", msgResponse.FailureCount)
 	}

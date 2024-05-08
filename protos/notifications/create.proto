@@ -15,6 +15,7 @@ message NotificationPackage {
   string title = 4;
   string body = 5;
   string image = 6;
+  map<string, string> data = 7;
 }
 
 message NotificationRequest {

@@ -38,11 +38,32 @@ type Notification struct {
 	data           map[string]string
 }
 
+// LOGGERS
+var (
+	InfoLogger  *log.Logger
+	ErrorLogger *log.Logger
+)
+
+func init() {
+	file, err := os.OpenFile("info_logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	errfile, err := os.OpenFile("error_logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	InfoLogger = log.New(file, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+	ErrorLogger = log.New(errfile, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+}
+
 func AuthInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	// extract token from context
 	token := extractFromContext(ctx)
 	// validate token
-	fmt.Println("auth intercept")
+	InfoLogger.Println("auth intercept")
 	if !isTokenValid(token) {
 		return nil, status.Errorf(codes.Unauthenticated, "Token invalid")
 	}
@@ -72,11 +93,11 @@ func (s *server) SendMessage(ctx context.Context, req *pb.NotificationRequest) (
 	startTime := time.Now()
 
 	if req.GetNotification() == nil {
-		fmt.Println("Caught it")
+		InfoLogger.Println("Caught it")
 		return nil, status.Errorf(codes.InvalidArgument, "Empty Message")
 	}
 
-	fmt.Printf("%+v\n", req)
+	InfoLogger.Printf("%+v\n", req)
 
 	notificationData := Notification{
 		message:        req.GetNotification().Message,
@@ -104,30 +125,32 @@ func (s *server) SendMessage(ctx context.Context, req *pb.NotificationRequest) (
 	endTime := time.Now()
 	duration := endTime.Sub(startTime)
 
-	log.Printf("Request Time taken: %v\n", duration)
+	InfoLogger.Printf("Request Time taken: %v\n", duration)
 
 	return &pb.NotificationResponse{Message: "Message Received"}, nil
 }
 
 func (s *healthCheckServer) Check(ctx context.Context, req *pbh.HealthCheckRequest) (*pbh.HealthCheckResponse, error) {
-	log.Printf("Sudah sampai")
+	InfoLogger.Printf("Sudah sampai")
 	return &pbh.HealthCheckResponse{Message: "Alive"}, nil
 }
 
 func worker(workerChan <-chan Notification) {
-	auth := os.Getenv("AUTH_FILE")
-	ctx := context.Background()
-	opt := option.WithCredentialsFile(auth)
+	var (
+		auth = os.Getenv("AUTH_FILE")
+		ctx  = context.Background()
+		opt  = option.WithCredentialsFile(auth)
+	)
 
 	app, err := firebase.NewApp(ctx, nil, opt)
 	if err != nil {
-		log.Printf("ERROR: %+v", err)
+		ErrorLogger.Printf("ERROR: %+v", err)
 		return
 	}
 
 	fcmClient, err := app.Messaging(ctx)
 	if err != nil {
-		log.Printf("ERROR: %+v", err)
+		ErrorLogger.Printf("ERROR: %+v", err)
 		return
 	}
 
@@ -155,8 +178,8 @@ func worker(workerChan <-chan Notification) {
 		apiCall := time.Now()
 		msgResponse, err := fcmClient.SendEach(ctx, messages)
 		if err != nil {
-			log.Printf("ERROR: %+v", err)
-			log.Printf("Error sending FCM message to device token: %v\n", err)
+			ErrorLogger.Printf("ERROR: %+v", err)
+			ErrorLogger.Printf("Error sending FCM message to device token: %v\n", err)
 			continue
 		}
 
@@ -169,6 +192,11 @@ func worker(workerChan <-chan Notification) {
 		log.Printf("API Round Trip Time: %v\n", apiTrip)
 		log.Printf("SuccessCount: %v\n", msgResponse.SuccessCount)
 		log.Printf("FailureCount: %v\n", msgResponse.FailureCount)
+
+		InfoLogger.Printf("FCM Time: %v\n", fcmDiff)
+		InfoLogger.Printf("API Round Trip Time: %v\n", apiTrip)
+		InfoLogger.Printf("SuccessCount: %v\n", msgResponse.SuccessCount)
+		InfoLogger.Printf("FailureCount: %v\n", msgResponse.FailureCount)
 	}
 }
 
@@ -183,14 +211,15 @@ func runGrpcServer() {
 	pbh.RegisterHealthServiceServer(s, &healthCheckServer{})
 
 	log.Printf("server listening at %v\n", lis.Addr())
-	log.Printf("Hello")
+	InfoLogger.Printf("server listening at %v\n", lis.Addr())
+	InfoLogger.Printf("Hello")
 
 	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
+		ErrorLogger.Fatalf("Failed to listen: %v", err)
 	}
 
 	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+		ErrorLogger.Fatalf("failed to serve: %v", err)
 	}
 }
 
@@ -200,7 +229,7 @@ func runHttpServer() {
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintf(w, "Server is healthy\n")
 
-		log.Printf("Server is Running")
+		InfoLogger.Printf("Server is Running")
 	})
 
 	http.ListenAndServe(":8080", nil)

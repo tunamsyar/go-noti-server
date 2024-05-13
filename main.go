@@ -97,8 +97,6 @@ func (s *server) SendMessage(ctx context.Context, req *pb.NotificationRequest) (
 		return nil, status.Errorf(codes.InvalidArgument, "Empty Message")
 	}
 
-	InfoLogger.Printf("%+v\n", req)
-
 	notificationData := Notification{
 		message:        req.GetNotification().Message,
 		title:          req.GetNotification().Title,
@@ -108,6 +106,12 @@ func (s *server) SendMessage(ctx context.Context, req *pb.NotificationRequest) (
 		analyticsLabel: req.GetNotification().AnalyticsLabel,
 		data:           req.GetNotification().Data,
 	}
+
+	InfoLogger.Printf(
+		"Message: %s, Title: %s, Body: %s, Analytics Label: %s, Data: %+v",
+		notificationData.message, notificationData.title, notificationData.body,
+		notificationData.analyticsLabel, notificationData.data,
+	)
 
 	numWorkers := 10
 	workerChan := make(chan Notification, numWorkers)

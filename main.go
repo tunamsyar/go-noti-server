@@ -42,6 +42,8 @@ type Notification struct {
 var (
 	InfoLogger  *log.Logger
 	ErrorLogger *log.Logger
+	file        *os.File
+	errFile     *os.File
 )
 
 func init() {
@@ -50,13 +52,22 @@ func init() {
 		log.Fatal(err)
 	}
 
-	errfile, err := os.OpenFile("error_logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	errFile, err := os.OpenFile("error_logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	InfoLogger = log.New(file, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
-	ErrorLogger = log.New(errfile, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+	ErrorLogger = log.New(errFile, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+}
+
+func closeLogFiles() {
+	if err := file.Close(); err != nil {
+		log.Printf("Failed to close info log file: %v", err)
+	}
+	if err := errFile.Close(); err != nil {
+		log.Printf("Failed to close error log file: %v", err)
+	}
 }
 
 func AuthInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
@@ -240,6 +251,7 @@ func runHttpServer() {
 }
 
 func main() {
+	defer closeLogFiles()
 	go runGrpcServer()
 	runHttpServer()
 }

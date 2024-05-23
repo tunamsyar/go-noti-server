@@ -11,6 +11,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/messaging"
 	"google.golang.org/api/option"
@@ -47,6 +49,11 @@ var (
 )
 
 func init() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	file, err := os.OpenFile("info_logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatal(err)

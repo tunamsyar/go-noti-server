@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/newrelic/go-agent/v3/newrelic"
 
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/messaging"
@@ -46,6 +47,7 @@ var (
 	ErrorLogger *log.Logger
 	file        *os.File
 	errFile     *os.File
+	newRelicApp *newrelic.Application
 )
 
 func init() {
@@ -66,6 +68,12 @@ func init() {
 
 	InfoLogger = log.New(file, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 	ErrorLogger = log.New(errFile, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+
+	newRelicApp, err := newrelic.NewApplication(
+		newrelic.ConfigAppName(os.Getenv("NEW_RELIC_APP_NAME")),
+		newrelic.ConfigLicense(os.Getenv("NEW_RELIC_LICENSE_KEY")),
+		newrelic.ConfigAppLogForwardingEnabled(true),
+	)
 }
 
 func closeLogFiles() {
@@ -158,6 +166,9 @@ func (s *healthCheckServer) Check(ctx context.Context, req *pbh.HealthCheckReque
 }
 
 func worker(workerChan <-chan Notification) {
+	txn := newRelicApp.StartTransaction("")
+	defer txn.End()
+
 	var (
 		auth = os.Getenv("AUTH_FILE")
 		ctx  = context.Background()

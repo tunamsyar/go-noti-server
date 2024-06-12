@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/newrelic/go-agent/v3/integrations/logcontext-v2/nrlogrus"
 	"github.com/newrelic/go-agent/v3/newrelic"
+	"github.com/sirupsen/logrus"
 
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/messaging"
@@ -43,10 +45,8 @@ type Notification struct {
 
 // LOGGERS
 var (
-	InfoLogger  *log.Logger
-	ErrorLogger *log.Logger
-	file        *os.File
-	errFile     *os.File
+	InfoLogger  *logrus.Logger
+	ErrorLogger *logrus.Logger
 	newRelicApp *newrelic.Application
 )
 
@@ -56,18 +56,8 @@ func init() {
 		log.Fatal(err)
 	}
 
-	file, err := os.OpenFile("info_logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	errFile, err := os.OpenFile("error_logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	InfoLogger = log.New(file, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
-	ErrorLogger = log.New(errFile, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+	InfoLogger = logrus.New()
+	ErrorLogger = logrus.New()
 
 	newRelicApp, err = newrelic.NewApplication(
 		newrelic.ConfigAppName(os.Getenv("NEW_RELIC_APP_NAME")),
@@ -75,21 +65,18 @@ func init() {
 		newrelic.ConfigDistributedTracerEnabled(true),
 	)
 
-	// writer := logWriter.New(os.Stdout, newRelicApp)
-	// logger := log.New(&writer, "", log.Default().Flags())
-
 	if err != nil {
 		log.Fatal(err)
 	}
-}
 
-func closeLogFiles() {
-	if err := file.Close(); err != nil {
-		log.Printf("Failed to close info log file: %v", err)
-	}
-	if err := errFile.Close(); err != nil {
-		log.Printf("Failed to close error log file: %v", err)
-	}
+	nrlogrusFormatter := nrlogrus.NewFormatter(newRelicApp, &logrus.TextFormatter{})
+
+	// Set Logrus log level and formatter
+	InfoLogger.SetLevel(logrus.InfoLevel)
+	InfoLogger.SetFormatter(nrlogrusFormatter)
+
+	ErrorLogger.SetLevel(logrus.ErrorLevel)
+	ErrorLogger.SetFormatter(nrlogrusFormatter)
 }
 
 func AuthInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
@@ -313,7 +300,6 @@ func runHttpServer() {
 }
 
 func main() {
-	defer closeLogFiles()
 	go runGrpcServer()
 	runHttpServer()
 }

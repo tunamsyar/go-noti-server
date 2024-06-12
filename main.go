@@ -75,6 +75,9 @@ func init() {
 		newrelic.ConfigAppLogForwardingEnabled(true),
 	)
 
+	// writer := logWriter.New(os.Stdout, newRelicApp)
+	// logger := log.New(&writer, "", log.Default().Flags())
+
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -217,8 +220,7 @@ func worker(workerChan <-chan Notification) {
 								Body:        notification.body,
 								LaunchImage: notification.image,
 							},
-							ContentAvailable: true,
-							Sound:            "default",
+							Sound: "default",
 						},
 						CustomData: map[string]interface{}{
 							"image-url": notification.image, // Custom key to handle image URL in your app

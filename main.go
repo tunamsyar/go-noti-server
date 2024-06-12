@@ -198,6 +198,33 @@ func worker(workerChan <-chan Notification) {
 
 		for _, deviceToken := range notification.deviceTokens {
 			msg := &messaging.Message{
+				Android: &messaging.AndroidConfig{
+					Priority: "high",
+					Notification: &messaging.AndroidNotification{
+						Title:    notification.title,
+						Body:     notification.body,
+						ImageURL: notification.image,
+					},
+				},
+				APNS: &messaging.APNSConfig{
+					Headers: map[string]string{
+						"apns-priority": "10",
+					},
+					Payload: &messaging.APNSPayload{
+						Aps: &messaging.Aps{
+							Alert: &messaging.ApsAlert{
+								Title:       notification.title,
+								Body:        notification.body,
+								LaunchImage: notification.image,
+							},
+							ContentAvailable: true,
+							Sound:            "default",
+						},
+						CustomData: map[string]interface{}{
+							"image-url": notification.image, // Custom key to handle image URL in your app
+						},
+					},
+				},
 				Notification: &messaging.Notification{
 					Title:    notification.title,
 					Body:     notification.body,

@@ -72,7 +72,7 @@ func init() {
 	newRelicApp, err = newrelic.NewApplication(
 		newrelic.ConfigAppName(os.Getenv("NEW_RELIC_APP_NAME")),
 		newrelic.ConfigLicense(os.Getenv("NEW_RELIC_LICENSE_KEY")),
-		newrelic.ConfigAppLogForwardingEnabled(true),
+		newrelic.ConfigDistributedTracerEnabled(true),
 	)
 
 	// writer := logWriter.New(os.Stdout, newRelicApp)
@@ -151,7 +151,7 @@ func (s *server) SendMessage(ctx context.Context, req *pb.NotificationRequest) (
 
 	go func() {
 		for i := 0; i < numWorkers; i++ {
-			go worker(workerChan)
+			go worker(workerChan, i)
 		}
 	}()
 
@@ -172,25 +172,29 @@ func (s *healthCheckServer) Check(ctx context.Context, req *pbh.HealthCheckReque
 	return &pbh.HealthCheckResponse{Message: "Alive"}, nil
 }
 
-func worker(workerChan <-chan Notification) {
-	txn := newRelicApp.StartTransaction("")
+func worker(workerChan <-chan Notification, id int) {
+	txn := newRelicApp.StartTransaction(fmt.Sprintf("Worker-%d", id))
+
 	defer txn.End()
 
 	var (
 		auth = os.Getenv("AUTH_FILE")
-		ctx  = context.Background()
+		ctx  = newrelic.NewContext(context.Background(), txn)
 		opt  = option.WithCredentialsFile(auth)
 	)
 
 	app, err := firebase.NewApp(ctx, nil, opt)
 	if err != nil {
+		txn.NoticeError(err)
 		ErrorLogger.Printf("ERROR: %+v", err)
+		txn.AddAttribute("error", fmt.Sprintf("Firebase init error: %v", err))
 		return
 	}
 
 	fcmClient, err := app.Messaging(ctx)
 	if err != nil {
 		ErrorLogger.Printf("ERROR: %+v", err)
+		txn.AddAttribute("error", fmt.Sprintf("FCM Error: %v", err))
 		return
 	}
 
@@ -242,10 +246,15 @@ func worker(workerChan <-chan Notification) {
 		}
 		// Send() is very slow.. DO NOT USE..
 		apiCall := time.Now()
+
+		apiCallSegment := txn.StartSegment("SendEach FCM Messages")
 		msgResponse, err := fcmClient.SendEach(ctx, messages)
+		apiCallSegment.End()
+
 		if err != nil {
 			ErrorLogger.Printf("ERROR: %+v", err)
-			ErrorLogger.Printf("Error sending FCM message to device token: %v\n", err)
+			ErrorLogger.Printf("Worker-%d: Error sending FCM messages: %+v", id, err)
+			txn.AddAttribute("error", fmt.Sprintf("Send FCM error: %v", err))
 			continue
 		}
 
@@ -254,15 +263,17 @@ func worker(workerChan <-chan Notification) {
 
 		fcmDiff := fcmEnd.Sub(fcmStart)
 
-		log.Printf("FCM Time: %v\n", fcmDiff)
-		log.Printf("API Round Trip Time: %v\n", apiTrip)
-		log.Printf("SuccessCount: %v\n", msgResponse.SuccessCount)
-		log.Printf("FailureCount: %v\n", msgResponse.FailureCount)
+		log.Printf("Worker-%d: FCM Time: %v, API Round Trip Time: %v, SuccessCount: %v, FailureCount: %v",
+			id, fcmDiff, apiTrip, msgResponse.SuccessCount, msgResponse.FailureCount)
 
-		InfoLogger.Printf("FCM Time: %v\n", fcmDiff)
-		InfoLogger.Printf("API Round Trip Time: %v\n", apiTrip)
-		InfoLogger.Printf("SuccessCount: %v\n", msgResponse.SuccessCount)
-		InfoLogger.Printf("FailureCount: %v\n", msgResponse.FailureCount)
+		txn.AddAttribute("worker_id", id)
+		txn.AddAttribute("fcm_time", fcmDiff.String())
+		txn.AddAttribute("api_round_trip", apiTrip.String())
+		txn.AddAttribute("success_count", msgResponse.SuccessCount)
+		txn.AddAttribute("failure_count", msgResponse.FailureCount)
+
+		InfoLogger.Printf("Worker-%d: FCM Time: %v, API Round Trip Time: %v, SuccessCount: %v, FailureCount: %v",
+			id, fcmDiff, apiTrip, msgResponse.SuccessCount, msgResponse.FailureCount)
 	}
 }
 

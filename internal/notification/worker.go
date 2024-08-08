@@ -14,18 +14,19 @@ import (
 	"google.golang.org/api/option"
 )
 
-type Notification struct {
-	Message        string
-	Title          string
-	Body           string
-	Image          string
-	DeviceTokens   []string
-	AnalyticsLabel string
-	Data           map[string]string
+func Worker(id int, notificationChan <-chan Notification) {
+	for notification := range notificationChan {
+
+		processNotification(notification, id)
+
+		if err := MarkNotificationAsProcessed(notification.ID); err != nil {
+			log.InfoLogger.Printf("ERROR: %+v", err)
+		}
+	}
 }
 
-func Worker(workerChan <-chan Notification, id int) {
-	txn := log.NewRelicApp.StartTransaction(fmt.Sprintf("Worker-%d", id))
+func processNotification(notification Notification, workerId int) {
+	txn := log.NewRelicApp.StartTransaction(fmt.Sprintf("Worker-%d", workerId))
 
 	defer txn.End()
 
@@ -52,78 +53,89 @@ func Worker(workerChan <-chan Notification, id int) {
 
 	fcmStart := time.Now()
 
-	for notification := range workerChan {
-		var messages []*messaging.Message
+	var messages []*messaging.Message
 
-		for _, deviceToken := range notification.DeviceTokens {
-			msg := &messaging.Message{
-				Android: &messaging.AndroidConfig{
-					Priority: "high",
-					Notification: &messaging.AndroidNotification{
-						Title:    notification.Title,
-						Body:     notification.Body,
-						ImageURL: notification.Image,
-					},
-					Data: notification.Data,
-				},
-				APNS: &messaging.APNSConfig{
-					Headers: map[string]string{
-						"apns-priority": "10",
-					},
-					Payload: &messaging.APNSPayload{
-						Aps: &messaging.Aps{
-							Alert: &messaging.ApsAlert{
-								Title:       notification.Title,
-								Body:        notification.Body,
-								LaunchImage: notification.Image,
-							},
-							Sound: "default",
-						},
-						CustomData: map[string]interface{}{
-							"image-url": notification.Image, // Custom key to handle image URL in your app
-							"data":      notification.Data,
-						},
-					},
-				},
-				Notification: &messaging.Notification{
+	deviceTokens := split(notification.DeviceTokens, ",")
+	if deviceTokens == nil {
+		log.ErrorLogger.Printf("Worker-%d: deviceTokens is nil", workerId)
+		txn.AddAttribute("error", "deviceTokens is nil")
+		return
+	}
+
+	data := parseData(notification.Data)
+
+	for _, deviceToken := range deviceTokens {
+		msg := &messaging.Message{
+			Android: &messaging.AndroidConfig{
+				Priority: "high",
+				Notification: &messaging.AndroidNotification{
 					Title:    notification.Title,
 					Body:     notification.Body,
 					ImageURL: notification.Image,
 				},
-				FCMOptions: &messaging.FCMOptions{
-					AnalyticsLabel: notification.AnalyticsLabel,
+				Data: data,
+			},
+			APNS: &messaging.APNSConfig{
+				Headers: map[string]string{
+					"apns-priority": "10",
 				},
-				Token: deviceToken, // Assuming a single device token for simplicity. Still janky. Should be a loop.
-				Data:  notification.Data,
-			}
-			messages = append(messages, msg)
+				Payload: &messaging.APNSPayload{
+					Aps: &messaging.Aps{
+						Alert: &messaging.ApsAlert{
+							Title:       notification.Title,
+							Body:        notification.Body,
+							LaunchImage: notification.Image,
+						},
+						Sound: "default",
+					},
+					CustomData: map[string]interface{}{
+						"image-url": notification.Image, // Custom key to handle image URL in your app
+						"data":      data,
+					},
+				},
+			},
+			Notification: &messaging.Notification{
+				Title:    notification.Title,
+				Body:     notification.Body,
+				ImageURL: notification.Image,
+			},
+			FCMOptions: &messaging.FCMOptions{
+				AnalyticsLabel: notification.AnalyticsLabel,
+			},
+			Token: deviceToken, // Assuming a single device token for simplicity. Still janky. Should be a loop.
+			Data:  data,
 		}
-		// Send() is very slow.. DO NOT USE..
-		apiCall := time.Now()
-
-		apiCallSegment := txn.StartSegment("SendEach FCM Messages")
-		msgResponse, err := fcmClient.SendEach(ctx, messages)
-		apiCallSegment.End()
-
-		if err != nil {
-			log.ErrorLogger.Printf("ERROR: %+v", err)
-			log.ErrorLogger.Printf("Worker-%d: Error sending FCM messages: %+v", id, err)
-			txn.AddAttribute("error", fmt.Sprintf("Send FCM error: %v", err))
-			continue
-		}
-
-		fcmEnd := time.Now()
-		apiTrip := fcmEnd.Sub(apiCall)
-
-		fcmDiff := fcmEnd.Sub(fcmStart)
-
-		log.InfoLogger.Printf("Worker-%d: FCM Time: %v, API Round Trip Time: %v, SuccessCount: %v, FailureCount: %v",
-			id, fcmDiff, apiTrip, msgResponse.SuccessCount, msgResponse.FailureCount)
-
-		txn.AddAttribute("worker_id", id)
-		txn.AddAttribute("fcm_time", fcmDiff.String())
-		txn.AddAttribute("api_round_trip", apiTrip.String())
-		txn.AddAttribute("success_count", msgResponse.SuccessCount)
-		txn.AddAttribute("failure_count", msgResponse.FailureCount)
+		messages = append(messages, msg)
 	}
+	// Send() is very slow.. DO NOT USE..
+	apiCall := time.Now()
+
+	apiCallSegment := txn.StartSegment("SendEach FCM Messages")
+
+	msgResponse, err := fcmClient.SendEach(ctx, messages)
+	if msgResponse == nil {
+		log.ErrorLogger.Printf("Worker-%d: msgResponse is nil", workerId)
+		txn.AddAttribute("error", "msgResponse is nil")
+		return
+	}
+	if err != nil {
+		log.ErrorLogger.Printf("ERROR: %+v", err)
+		log.ErrorLogger.Printf("Worker-%d: Error sending FCM messages: %+v", workerId, err)
+		txn.AddAttribute("error", fmt.Sprintf("Send FCM error: %v", err))
+	}
+	apiCallSegment.End()
+
+	fcmEnd := time.Now()
+	apiTrip := fcmEnd.Sub(apiCall)
+
+	fcmDiff := fcmEnd.Sub(fcmStart)
+
+	log.InfoLogger.Printf("Worker-%d: FCM Time: %v, API Round Trip Time: %v, SuccessCount: %v, FailureCount: %v",
+		workerId, fcmDiff, apiTrip, msgResponse.SuccessCount, msgResponse.FailureCount)
+
+	txn.AddAttribute("worker_id", workerId)
+	txn.AddAttribute("fcm_time", fcmDiff.String())
+	txn.AddAttribute("api_round_trip", apiTrip.String())
+	txn.AddAttribute("success_count", msgResponse)
+	txn.AddAttribute("failure_count", msgResponse.FailureCount)
 }

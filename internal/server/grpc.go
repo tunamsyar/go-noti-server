@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"go-noti-server/internal/log"
@@ -56,34 +58,33 @@ func (s *server) SendMessage(ctx context.Context, req *pb.NotificationRequest) (
 		return nil, status.Errorf(codes.InvalidArgument, "Empty Message")
 	}
 
+	data, err := json.Marshal(req.GetNotification().Data)
+	if err != nil {
+		log.ErrorLogger.Printf("Failed to serialize data: %v", err)
+		return nil, status.Errorf(codes.Internal, "Failed to serialize data")
+	}
+
 	notificationData := notification.Notification{
 		Message:        req.GetNotification().Message,
 		Title:          req.GetNotification().Title,
 		Body:           req.GetNotification().Body,
 		Image:          req.GetNotification().Image,
-		DeviceTokens:   req.GetNotification().DeviceTokens,
+		DeviceTokens:   strings.Join(req.GetNotification().DeviceTokens, ","),
 		AnalyticsLabel: req.GetNotification().AnalyticsLabel,
-		Data:           req.GetNotification().Data,
+		Data:           string(data),
+	}
+
+	err = notification.SaveNotification(notificationData)
+	if err != nil {
+		log.ErrorLogger.Printf("Failed to save notification: %v", err)
+		return nil, status.Errorf(codes.Internal, "Failed to save notification")
 	}
 
 	log.InfoLogger.Printf(
-		"Message: %s, Title: %s, Body: %s, Analytics Label: %s, Data: %+v",
+		"Message: %s, Title: %s, Body: %s, Image: %s, Data: %+v",
 		notificationData.Message, notificationData.Title, notificationData.Body,
-		notificationData.AnalyticsLabel, notificationData.Data,
+		notificationData.Image, string(data),
 	)
-
-	numWorkers := 10
-	workerChan := make(chan notification.Notification, numWorkers)
-
-	go func() {
-		for i := 0; i < numWorkers; i++ {
-			go notification.Worker(workerChan, i)
-		}
-	}()
-
-	workerChan <- notificationData
-
-	close(workerChan)
 
 	endTime := time.Now()
 	duration := endTime.Sub(startTime)

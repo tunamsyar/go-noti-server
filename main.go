@@ -2,6 +2,7 @@ package main
 
 import (
 	"go-noti-server/config"
+	"go-noti-server/internal/cleanup"
 	"go-noti-server/internal/log"
 	"go-noti-server/internal/notification"
 	"go-noti-server/internal/server"
@@ -36,12 +37,23 @@ func main() {
 			for _, notif := range notifications {
 				// Update the notification to indicate it's being processed
 				db.Model(&notification.Notification{}).Where("id = ?", notif.ID).Update("processing", true)
-				notificationChan <- notif
+
+				select {
+				case notificationChan <- notif:
+					// Successfully sent notification to the channel
+				default:
+					// Channel is full, handle overflow
+					log.ErrorLogger.Printf("Notification channel is full, dropping notification: %v", notif.ID)
+					db.Model(&notification.Notification{}).Where("id = ?", notif.ID).Update("processing", false) // Reset processing
+				}
 			}
 
 			time.Sleep(5 * time.Second) // Sleep to avoid busy waiting
 		}
 	}()
+
+	// Runs at midnight
+	cleanup.ScheduleDailyCleanup(24 * time.Hour)
 
 	server.RunGrpcServer()
 }

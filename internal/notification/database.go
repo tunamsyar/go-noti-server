@@ -5,6 +5,7 @@ import (
 	"go-noti-server/internal/log"
 	"os"
 	"strings"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -67,6 +68,18 @@ func FetchOnePendingNotification() (Notification, error) {
 
 func MarkNotificationAsProcessed(id uint) error {
 	return db.Model(&Notification{}).Where("id = ?", id).Update("processed", true).Error
+}
+
+// CleanupOldNotifications deletes notifications older than a specified duration
+func CleanupOldNotifications(duration time.Duration) {
+	// Define the time threshold for deletion
+	threshold := time.Now().Add(-duration)
+
+	var notifications []Notification
+	// Delete old notifications
+	if err := db.Where("created_at < ?", threshold).Delete(&notifications).Error; err != nil {
+		log.InfoLogger.Printf("Error cleaning up old notifications: %v", err)
+	}
 }
 
 func split(s, sep string) []string {

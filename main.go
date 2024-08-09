@@ -19,6 +19,11 @@ func main() {
 		log.ErrorLogger.Printf("Error INIT DB: %v", err)
 	}
 
+	err = db.Exec("CREATE INDEX IF NOT EXISTS idx_notification_processing ON notifications (processing);").Error
+	if err != nil {
+		log.ErrorLogger.Fatalf("Failed to create index: %v", err)
+	}
+
 	notificationChan := make(chan notification.Notification, 10)
 
 	for i := 0; i < 10; i++ {

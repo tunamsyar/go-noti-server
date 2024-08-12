@@ -67,7 +67,12 @@ func FetchOnePendingNotification() (Notification, error) {
 }
 
 func MarkNotificationAsProcessed(id uint) error {
-	return db.Model(&Notification{}).Where("id = ?", id).Update("processed", true).Error
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := db.Model(&Notification{}).Where("id = ?", id).Update("processed", true).Error; err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // CleanupOldNotifications deletes notifications older than a specified duration

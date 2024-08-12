@@ -11,8 +11,10 @@ func ScheduleDailyCleanup(duration time.Duration) {
 	go func() {
 		for {
 			// Calculate the next run time
-			now := time.Now()
-			nextRun := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Add(24 * time.Hour)
+			location, _ := time.LoadLocation("Asia/Singapore")
+			now := time.Now().In(location)
+
+			nextRun := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location).Add(24 * time.Hour)
 			if now.After(nextRun) {
 				nextRun = nextRun.Add(24 * time.Hour)
 			}

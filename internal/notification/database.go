@@ -85,6 +85,10 @@ func CleanupOldNotifications(duration time.Duration) {
 	if err := db.Where("created_at < ?", threshold).Delete(&notifications).Error; err != nil {
 		log.InfoLogger.Printf("Error cleaning up old notifications: %v", err)
 	}
+
+	if err := db.Exec("VACUUM").Error; err != nil {
+		log.InfoLogger.Printf("Error running VACUUM after cleanup: %v", err)
+	}
 }
 
 func split(s, sep string) []string {

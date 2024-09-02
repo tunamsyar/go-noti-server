@@ -2,6 +2,7 @@ package notification
 
 import (
 	"encoding/json"
+	"fmt"
 	"go-noti-server/internal/log"
 	"os"
 	"strings"
@@ -50,7 +51,26 @@ type Notification struct {
 }
 
 func SaveNotification(n Notification) error {
-	return db.Create(&n).Error
+	const maxRetries int = 10
+
+	for i := 0; i < maxRetries; i++ {
+		err := db.Create(&n).Error
+		if err == nil {
+			return nil
+		}
+
+		if strings.Contains(err.Error(), "database is locked") {
+			log.InfoLogger.Printf("Retrying to save notification: %v", err)
+			time.Sleep(time.Duration(i+1) * time.Second) // Exponential backoff
+			continue
+		}
+
+		return err
+	}
+
+	log.ErrorLogger.Errorf("Failed to save after %v tries", maxRetries)
+
+	return fmt.Errorf("failed to save notification after %d retries", maxRetries)
 }
 
 func FetchPendingNotifications() ([]Notification, error) {

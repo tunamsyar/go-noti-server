@@ -82,7 +82,7 @@ func CleanupOldNotifications(duration time.Duration) {
 
 	var notifications []Notification
 	// Delete old notifications
-	if err := db.Where("created_at < ?", threshold).Delete(&notifications).Error; err != nil {
+	if err := db.Unscoped().Where("created_at < ?", threshold).Delete(&notifications).Error; err != nil {
 		log.InfoLogger.Printf("Error cleaning up old notifications: %v", err)
 	}
 

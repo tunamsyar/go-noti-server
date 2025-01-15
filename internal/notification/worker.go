@@ -64,14 +64,21 @@ func processNotification(notification Notification, workerId int) {
 
 	data := parseData(notification.Data)
 
+	var channelId string
+
+	if value, ok := data["channelId"]; ok {
+		channelId = value
+	}
+
 	for _, deviceToken := range deviceTokens {
 		msg := &messaging.Message{
 			Android: &messaging.AndroidConfig{
 				Priority: "high",
 				Notification: &messaging.AndroidNotification{
-					Title:    notification.Title,
-					Body:     notification.Body,
-					ImageURL: notification.Image,
+					Title:     notification.Title,
+					Body:      notification.Body,
+					ImageURL:  notification.Image,
+					ChannelID: channelId,
 				},
 				Data: data,
 			},

@@ -30,6 +30,19 @@ func InitDB() (*gorm.DB, error) {
 		log.ErrorLogger.Fatalf("Failed to connect to the database: %v", err)
 	}
 
+	// Clean up duplicates
+	err = db.Exec(`
+        DELETE FROM notifications
+        WHERE id NOT IN (
+            SELECT MIN(id)
+            FROM notifications
+            GROUP BY message, device_tokens
+        )
+    `).Error
+	if err != nil {
+		log.ErrorLogger.Fatalf("Failed to clean up duplicates: %v", err)
+	}
+
 	err = db.AutoMigrate(&Notification{})
 	if err != nil {
 		log.ErrorLogger.Fatalf("Failed to migrate database: %v", err)
@@ -39,11 +52,11 @@ func InitDB() (*gorm.DB, error) {
 
 type Notification struct {
 	gorm.Model
-	Message        string `gorm:"type:string"`
+	Message        string `gorm:"type:string;uniqueIndex:idx_message_tokens"`
 	Title          string `gorm:"type:string"`
 	Body           string `gorm:"type:string"`
 	Image          string `gorm:"type:string"`
-	DeviceTokens   string `gorm:"type:text"`
+	DeviceTokens   string `gorm:"type:text;uniqueIndex:idx_message_tokens"`
 	AnalyticsLabel string `gorm:"type:text"`
 	Data           string `gorm:"type:text"`
 	Processed      bool   `gorm:"column:processed"`
@@ -63,6 +76,11 @@ func SaveNotification(n Notification) error {
 			log.InfoLogger.Printf("Retrying to save notification: %v", err)
 			time.Sleep(time.Duration(i+1) * time.Second) // Exponential backoff
 			continue
+		}
+
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			log.InfoLogger.Printf("Duplicate notification detected: %v", err)
+			return nil
 		}
 
 		return err
